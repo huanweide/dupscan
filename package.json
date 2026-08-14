@@ -1,0 +1,10 @@
+{
+  "name": "dupscan",
+  "version": "1.0.0",
+  "description": "Zero-dependency duplicate code block detector for JS/TS (code-health family: 8th axis).",
+  "bin": { "dupscan": "index.js" },
+  "type": "commonjs",
+  "scripts": { "test": "node --test test.js" },
+  "keywords": ["duplicate", "code", "duplication", "static-analysis", "cli", "zero-dependency", "code-health"],
+  "license": "MIT"
+}
