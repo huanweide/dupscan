@@ -6,7 +6,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const dup = require('./index.js');
+// 本文件位于 test/ 下，必须用 .. 回到仓库根加载被测模块
+const dup = require('../index.js');
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dupscan-'));

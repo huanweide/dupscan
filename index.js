@@ -7,8 +7,13 @@
 const fs = require('fs');
 const path = require('path');
 
+const VERSION = '1.1.0';
+
 const EXT = new Set(['.js', '.mjs', '.cjs', '.ts', '.jsx', '.tsx', '.vue', '.svelte']);
-const IGNORE_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', 'out', 'vendor']);
+const IGNORE_DIRS = new Set([
+  'node_modules', '.git', 'dist', 'build', 'coverage',
+  '.next', 'out', 'vendor', '.nuxt', '__pycache__', '.venv', 'venv',
+]);
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 const NUM_FLAGS = new Set(['--min-lines', '--max-issues', '--max-lines']);
@@ -221,14 +226,44 @@ function parseArgs(argv) {
     if (a === '--fail-on-high') { opts.failOnHigh = true; continue; }
     if (a === '--json') { opts.json = true; continue; }
     if (NUM_FLAGS.has(a)) {
-      const v = parseInt(argv[++i], 10);
-      if (!Number.isFinite(v)) { throw new Error('flag ' + a + ' needs a valid integer'); }
+      const raw = argv[++i];
+      // 历史缺陷（两处）：
+      //   parseInt('5abc') === 5   → 拼错的门禁值被静默截断，用户的门禁根本没生效
+      //   parseInt('')     === NaN，Number('') === 0  → 空串与数字行为不一致
+      // 门禁参数写错 = 门禁不存在，一律退 2。
+      const v = Number(raw);
+      if (raw === undefined || String(raw).trim() === '' || !Number.isFinite(v)) {
+        throw new Error('flag ' + a + ' needs a valid integer, got: ' +
+          (raw === undefined ? '<missing>' : JSON.stringify(raw)));
+      }
+      if (!Number.isInteger(v)) {
+        throw new Error('flag ' + a + ' needs an integer, got: ' + raw);
+      }
+      // --min-lines 为 0 或负数会让 n-gram 窗口退化成空串，
+      // 把整个文件判成互相重复 —— 纯噪声结论，必须拒绝。
+      if (a === '--min-lines' && v < 1) {
+        throw new Error('--min-lines must be >= 1, got: ' + raw);
+      }
+      if ((a === '--max-issues' || a === '--max-lines') && v < 0) {
+        throw new Error(a + ' must be >= 0, got: ' + raw);
+      }
       if (a === '--min-lines') opts.minLines = v;
       else if (a === '--max-issues') opts.maxIssues = v;
       else if (a === '--max-lines') opts.maxLines = v;
       continue;
     }
-    if (STR_FLAGS.has(a)) { opts.root = argv[++i]; continue; }
+    if (STR_FLAGS.has(a)) {
+      const next = argv[i + 1];
+      // 历史缺陷：`--root` 缺值时 root 被赋成 undefined，报错是 node 内部
+      // "path argument must be of type string"；`--root --json` 会把 --json
+      // 静默当成目录名吞掉。
+      if (next === undefined || next.startsWith('-')) {
+        throw new Error('flag ' + a + ' needs a directory argument');
+      }
+      opts.root = next;
+      i++;
+      continue;
+    }
     if (a.startsWith('-')) { throw new Error('unknown flag: ' + a); }
     positionals.push(a);
   }
@@ -241,12 +276,12 @@ function severityLabel(s) {
   return s === 'high' ? 'HIGH' : s === 'medium' ? 'MED ' : 'low ';
 }
 
-function formatReport(groups, health, totalLines, scanned, root) {
+function formatReport(groups, health, totalLines, scanned, root, gate) {
   let extra = 0;
   for (const g of groups) extra += g.lines * (g.copies - 1);
   const pct = totalLines ? ((extra / totalLines) * 100).toFixed(1) : '0.0';
   const lines = [];
-  lines.push('dupscan · 重复代码扫描');
+  lines.push('dupscan v' + VERSION + ' · 重复代码扫描');
   lines.push('root: ' + root);
   lines.push('scanned files: ' + scanned + '  total lines: ' + totalLines);
   lines.push('health score: ' + health + '/100');
@@ -254,17 +289,21 @@ function formatReport(groups, health, totalLines, scanned, root) {
   lines.push('');
   if (groups.length === 0) {
     lines.push('no duplicate blocks found (>= min-lines).');
-    return lines.join('\n');
-  }
-  lines.push('duplicate blocks: ' + groups.length);
-  lines.push('');
-  for (const g of groups) {
-    lines.push('[' + severityLabel(g.severity) + '] ' + g.lines + ' lines x' + g.copies +
-      (g.crossFile ? ' (cross-file)' : '') + '  severity weight ' + sevWeight(g));
-    for (const o of g.occurrences) {
-      lines.push('    ' + o.file + ':' + o.start + '-' + o.end);
+  } else {
+    lines.push('duplicate blocks: ' + groups.length);
+    lines.push('');
+    for (const g of groups) {
+      lines.push('[' + severityLabel(g.severity) + '] ' + g.lines + ' lines x' + g.copies +
+        (g.crossFile ? ' (cross-file)' : '') + '  severity weight ' + sevWeight(g));
+      for (const o of g.occurrences) {
+        lines.push('    ' + o.file + ':' + o.start + '-' + o.end);
+      }
     }
   }
+  // 门禁状态始终显式打印：用户必须一眼看出「这次到底判没判定」。
+  // 只在失败时才打印 = 让人误以为「没消息就是通过」。
+  lines.push('');
+  lines.push('gate state: ' + gate.state + ' — ' + gate.reason);
   return lines.join('\n');
 }
 
@@ -272,16 +311,20 @@ function sevWeight(g) {
   return { high: 3, medium: 2, low: 1 }[g.severity];
 }
 
-function toJson(groups, health, totalLines, scanned, root) {
+function toJson(groups, health, totalLines, scanned, root, gate) {
   let extra = 0;
   for (const g of groups) extra += g.lines * (g.copies - 1);
   return JSON.stringify({
+    tool: 'dupscan',
+    version: VERSION,
     root,
     health,
     totalLines,
     scanned,
     duplicateLines: extra,
     duplicateBlocks: groups.length,
+    gate: { state: gate.state, configured: gate.configured, reason: gate.reason },
+    basisComplete: gate.state !== GATE_STATE.INCONCLUSIVE,
     blocks: groups.map((g) => ({
       severity: g.severity,
       lines: g.lines,
@@ -292,12 +335,61 @@ function toJson(groups, health, totalLines, scanned, root) {
   }, null, 2);
 }
 
+// ---------- 门禁三态 ----------
+// 历史缺陷（家族共性最恶劣失败模式）：扫描型工具扫 0 个对象却输出
+// 「health score: 100/100 · no duplicate blocks found」并 rc=0。
+// 更隐蔽的是：即使显式传了 --max-issues / --fail-on-high，空输入照样「通过」——
+// 用户的门禁配置在那一刻完全是摆设。CI 上这就是一盏永不熄灭的绿灯。
+//
+// 现在统一为三态：pass(0) / fail(2) / inconclusive(3)。
+const GATE_STATE = {
+  PASS: 'pass',
+  FAIL: 'fail',
+  INCONCLUSIVE: 'inconclusive',
+};
+
+function buildGateState({ scanned, totalLines, opts, failed }) {
+  const configured = opts.maxIssues !== null || opts.maxLines !== null || opts.failOnHigh;
+  if (!configured) {
+    return {
+      state: GATE_STATE.INCONCLUSIVE,
+      configured: false,
+      reason: '未配置任何门禁阈值，本次仅体检不判定（请显式传入 --max-issues / --max-lines / --fail-on-high）',
+    };
+  }
+  if (scanned === 0) {
+    return {
+      state: GATE_STATE.INCONCLUSIVE,
+      configured: true,
+      reason: '扫描输入为空（0 个可分析文件），无法判定；请确认 --root 指向源码目录且不是全部命中排除规则',
+    };
+  }
+  if (totalLines === 0) {
+    return {
+      state: GATE_STATE.INCONCLUSIVE,
+      configured: true,
+      reason: '扫描到的文件全部无可解析内容，无法判定',
+    };
+  }
+  return {
+    state: failed ? GATE_STATE.FAIL : GATE_STATE.PASS,
+    configured: true,
+    reason: failed ? '存在不达标项' : '全部指标达标',
+  };
+}
+
+function exitCodeFor(state) {
+  if (state.state === GATE_STATE.FAIL) return 2;
+  if (state.state === GATE_STATE.INCONCLUSIVE) return 3;
+  return 0;
+}
+
 function run(argv) {
   let opts;
   try { opts = parseArgs(argv); }
   catch (e) {
     process.stderr.write('error: ' + e.message + '\n');
-    process.exit(2);
+    process.exitCode = 2;
     return;
   }
   if (opts.help) {
@@ -305,19 +397,19 @@ function run(argv) {
     return;
   }
   if (opts.version) {
-    process.stdout.write('dupscan 1.0.0\n');
+    process.stdout.write('dupscan ' + VERSION + '\n');
+    return;
+  }
+  if (!fs.existsSync(opts.root)) {
+    process.stderr.write('error: root not found: ' + opts.root + '\n');
+    process.exitCode = 2;
     return;
   }
   let files;
   try { files = collectFiles(opts.root); }
   catch (e) {
     process.stderr.write('error: cannot read root ' + opts.root + ': ' + e.message + '\n');
-    process.exit(2);
-    return;
-  }
-  if (!fs.existsSync(opts.root)) {
-    process.stderr.write('error: root not found: ' + opts.root + '\n');
-    process.exit(2);
+    process.exitCode = 2;
     return;
   }
   const { groups, dupWindows } = detectDuplicates(files, opts.minLines);
@@ -327,38 +419,47 @@ function run(argv) {
     if (built) totalLines += built.rawNo.length;
   }
   const health = computeHealth(groups, totalLines);
-  if (opts.json) {
-    process.stdout.write(toJson(groups, health, totalLines, files.length, opts.root) + '\n');
-  } else {
-    process.stdout.write(formatReport(groups, health, totalLines, files.length, opts.root) + '\n');
-  }
+
   let failed = false;
-  if (opts.maxIssues != null && groups.length > opts.maxIssues) failed = true;
-  if (opts.maxLines != null) {
+  if (opts.maxIssues !== null && groups.length > opts.maxIssues) failed = true;
+  if (opts.maxLines !== null) {
     let extra = 0;
     for (const g of groups) extra += g.lines * (g.copies - 1);
     if (extra > opts.maxLines) failed = true;
   }
   if (opts.failOnHigh && groups.some((g) => g.severity === 'high')) failed = true;
-  if (failed) process.exit(1);
+
+  const gate = buildGateState({ scanned: files.length, totalLines, opts, failed });
+
+  if (opts.json) {
+    process.stdout.write(toJson(groups, health, totalLines, files.length, opts.root, gate) + '\n');
+  } else {
+    process.stdout.write(formatReport(groups, health, totalLines, files.length, opts.root, gate) + '\n');
+  }
+  process.exitCode = exitCodeFor(gate);
 }
 
 const USAGE = [
-  'dupscan — zero-dependency duplicate code block detector',
+  'dupscan v' + VERSION + ' — zero-dependency duplicate code block detector',
   '',
   'usage: dupscan [root] [options]',
   '',
   'options:',
   '  --root <dir>        scan target (default: cwd)',
-  '  --min-lines <n>     min consecutive duplicate lines (default 5)',
+  '  --min-lines <n>     min consecutive duplicate lines, >= 1 (default 5)',
   '  --max-issues <n>    fail CI if duplicate blocks > n',
   '  --max-lines <n>     fail CI if extra duplicate lines > n',
   '  --fail-on-high      fail CI if any HIGH block exists',
-  '  --json              machine-readable output',
+  '  --json              machine-readable output (includes gate / basisComplete)',
   '  -V, --version       print version',
   '  -h, --help          print help',
   '',
-  'exit: 0 clean | 1 CI gate failed | 2 usage error',
+  'gate states (see gate.state / basisComplete in --json):',
+  '  pass           thresholds configured, input trusted, all metrics within limits',
+  '  fail           thresholds configured and at least one metric out of limits',
+  '  inconclusive   no thresholds configured, or empty input -> cannot conclude, NOT a pass',
+  '',
+  'exit: 0 pass | 2 gate failed | 3 inconclusive | 2 usage error',
 ].join('\n');
 
 module.exports = {
@@ -373,7 +474,12 @@ module.exports = {
   toJson,
   severityLabel,
   sevWeight,
+  buildGateState,
+  exitCodeFor,
+  GATE_STATE,
   EXT,
+  IGNORE_DIRS,
+  VERSION,
 };
 
 if (require.main === module) {

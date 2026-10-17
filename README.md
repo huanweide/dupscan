@@ -13,29 +13,66 @@
 ```bash
 git clone https://github.com/huanweide/dupscan
 cd dupscan
-node index.js .          # 需要 Node >= 18
+node index.js .          # Node >= 14
 ```
 
 零依赖，不需要 `npm install`。
+
+> **本包未发布到 npm registry**（`npm i -g dupscan` 会 404）。克隆后 `npm link` 即可当全局命令用，或直接 `node index.js`。
+>
+> 运行环境：**Node >= 14**（`engines` 如实声明，CI 有 Node 14/22 双版本矩阵实测）。
+> 注：`node --test` 需 Node >= 18，Node 14 下 CI 走等价的冒烟自检路径。
 
 ## 用法
 
 ```bash
 # 扫当前目录
-dupscan .
+node index.js .
 
 # 扫指定目录，最小重复块改为 6 行
-dupscan src --min-lines 6
+node index.js src --min-lines 6
 
 # 机器可读输出（CI 里接 jq / 流水线）
-dupscan . --json
+node index.js . --json
 
 # CI 门禁：不允许任何 HIGH 重复块，且重复块总数不超过 3
-dupscan . --fail-on-high --max-issues 3
+node index.js . --fail-on-high --max-issues 3
 
 # 仅容忍最多 20 行"额外重复行"（重复块行数 × 重复份数 - 1 的累计）
-dupscan . --max-lines 20
+node index.js . --max-lines 20
 ```
+
+## 门禁三态（重要）
+
+扫描型门禁工具最恶劣的失败模式是「**扫了 0 个对象却报通过**」——CI 上就是一盏永不熄灭的绿灯。
+更隐蔽的是：即使显式传了 `--max-issues` / `--fail-on-high`，空输入照样「通过」，用户的门禁配置在那一刻完全是摆设。
+
+所以 dupscan 不输出布尔结论，而输出三态（`--json` 里见 `gate.state` 与 `basisComplete`）：
+
+| `gate.state` | 退出码 | 含义 |
+| --- | --- | --- |
+| `pass` | 0 | 配了门禁阈值、输入可信、指标达标 |
+| `fail` | 2 | 配了门禁阈值，且至少一项不达标 |
+| `inconclusive` | 3 | **无法下结论**：未配任何门禁阈值，或扫描输入为空 / 全部文件无可解析内容 |
+
+```jsonc
+{
+  "scanned": 128,
+  "health": 94,
+  "duplicateBlocks": 3,
+  "gate": { "state": "pass", "configured": true, "reason": "全部指标达标" },
+  "basisComplete": true   // false 表示本次结论不可信，别拿它当合规证据
+}
+```
+
+> 未配门禁阈值时返回 `3` 而不是 `0`，是刻意的：这样「我只是跑着看看」不会在 CI 里被误读成「检查通过」。
+> 想让它放行，显式写 `--max-issues 9999` 即可。
+>
+> **退出码变更**：门禁失败历史上返回 `1`，现统一为家族约定的 `2`（`0` 通过 / `2` 失败 / `3` 无法判定）。
+
+所有数值参数必须是**合法整数**：`--min-lines` 必须 `>= 1`（`0` 会让 n-gram 窗口退化成空串，把整个文件判成互相重复），
+`--max-issues` / `--max-lines` 必须 `>= 0`；缺值、空串、小数、尾随垃圾字符（如 `5abc`）一律退 `2`。
+其中 `5abc` 尤其关键——`parseInt('5abc') === 5` 会把拼错的门禁值静默截断，让门禁根本没生效。
 
 ## 原理
 
@@ -87,12 +124,22 @@ MIT
 
 ## CI 门禁用法
 
-开箱即可接入 CI：在流水线中运行本工具，它会输出健康分与严重度；若存在不达标项会以非 0 退出码结束，从而拦下问题提交（具体参数见上方「快速开始」）。
+开箱即可接入 CI：在流水线中运行本工具，它会输出健康分与严重度，并显式打印门禁状态；
+若存在不达标项会以退出码 `2` 结束，若无法下结论则以 `3` 结束——**只有真正判定通过才是 `0`**（具体参数见上方「用法」）。
 
 ## 赞助支持
 
 如果这个项目帮到了你，欢迎 [点 Star](https://github.com/huanweide/dupscan) 支持；也可微信扫码自愿赞助（收款码见 `sponsor/wechat-qr.png`，作者本人带 Tri 水印的码，纯静态图片、不含任何密钥）。
 
+## 测试
+
+```bash
+node --test          # 37 组：单测 + spawn 级冒烟（Node >= 18）
+```
+
+`test/smoke-cli.js` 真实起进程验证**退出码契约**。这一层不可省略：`node --test` 的单测只测导出的函数，
+根本不碰 `process.exitCode`，改退出码时单测会全绿放行。
+
 ## 许可证
 
-详见 [LICENSE](LICENSE)。
+[MIT](LICENSE)
