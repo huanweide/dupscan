@@ -1,3 +1,11 @@
+<!-- badges -->
+[![License](https://img.shields.io/github/license/huanweide/dupscan)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/huanweide/dupscan)](https://github.com/huanweide/dupscan/stargazers)
+[![Engineering Health Family](https://img.shields.io/badge/Engineering%20Health%20Family-18%20axes-22c55e)](https://github.com/huanweide/family-showcase)
+<!-- /badges -->
+
+**🔧 Part of the [Engineering Health Family](https://github.com/huanweide/family-showcase)** (18 zero-dependency checkup axes). Standalone tool — see [doctors](https://github.com/huanweide/doctors) (monorepo) and [enghealth](https://github.com/huanweide/enghealth) (unified runner).
+
 # dupscan
 
 零依赖单文件重复代码块检测 CLI —— 代码健康 family 第八轴「重复代码」。
