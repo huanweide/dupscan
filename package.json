@@ -23,7 +23,7 @@
   "engines": {
     "node": ">=14"
   },
-  "author": "ReTri · 樊斯瑞",
+  "author": "ReTri · huanweide",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/huanweide/dupscan.git"
