@@ -1,5 +1,7 @@
+English: 暂未提供
+
 > [!WARNING]
-> **⚠️ 本轴已并入 [doctors](https://github.com/huanweide/doctors) 家族 monorepo → 本仓停止维护。**
+> **⚠️ 本工具已并入 [doctors](https://github.com/huanweide/doctors) monorepo → 本仓停止维护。**
 >
 > 代码原件已迁至 [`doctors/packages/dupscan/`](https://github.com/huanweide/doctors/tree/main/packages/dupscan)，
 > 在 doctors 里以 `doctors dup` 子命令调用（或 `node packages/dupscan/index.js`）。
@@ -8,14 +10,14 @@
 <!-- badges -->
 [![License](https://img.shields.io/github/license/huanweide/dupscan)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/huanweide/dupscan)](https://github.com/huanweide/dupscan/stargazers)
-[![Engineering Health Family](https://img.shields.io/badge/Engineering%20Health%20Family-18%20axes-22c55e)](https://github.com/huanweide/family-showcase)
+[![zero-dep checkup CLI](https://img.shields.io/badge/zero--dep%20checkup%20CLI-18%20tools-22c55e)](https://github.com/huanweide/family-showcase)
 <!-- /badges -->
 
-**🔧 Part of the [Engineering Health Family](https://github.com/huanweide/family-showcase)** (18 zero-dependency checkup axes). Standalone tool — see [doctors](https://github.com/huanweide/doctors) (monorepo) and [enghealth](https://github.com/huanweide/enghealth) (unified runner).
+**🔧 本工具属于 [huanweide 零依赖 CLI 系列](https://github.com/huanweide/family-showcase)（共 18 件单文件工具）。可单独使用，也可在 [doctors](https://github.com/huanweide/doctors) monorepo 中以子命令调用，或用 [enghealth](https://github.com/huanweide/enghealth) 统一运行。**
 
 # dupscan
 
-零依赖单文件重复代码块检测 CLI —— 代码健康 family 第八轴「重复代码」。
+零依赖单文件重复代码块检测 CLI —— 属于 huanweide 零依赖 CLI 系列，聚焦「重复代码。
 
 扫 JS / TS 生态（`.js .mjs .cjs .ts .jsx .tsx .vue .svelte`），找出连续重复的代码片段，给出严重度加权健康分与开箱即用的 CI 门禁。不联网、不装依赖、不需要配置，单文件 `index.js` 直接跑。
 
@@ -117,9 +119,9 @@ node index.js . --max-lines 20
 | 依赖 | 零依赖单文件 | 需 `npm install` + 配置 |
 | 范围 | JS/TS 聚焦，确定性 | 跨语言泛化 |
 | CI 门禁 | 内置 `--max-issues` / `--max-lines` / `--fail-on-high` | 需额外集成 |
-| 定位 | 开箱即用的代码健康 family 一员 | 通用重复检测 |
+| 定位 | 开箱即用的零依赖 CLI 系列一员 | 通用重复检测 |
 
-## 代码健康 family（八件套）
+## 同系列零依赖 CLI
 
 `devdoctor`（依赖体检）· `testlite`（测试卫生）· `debtlens`（技术债）· `a11ydoctor`（前端可访问性）· `awaitscan`（异步性能）· `cycscan`（结构复杂度）· `secscan`（安全反模式）· **`dupscan`（重复代码）**
 
@@ -135,7 +137,7 @@ MIT
 
 ## 作者
 
-由 **ReTr · huanweide** 维护 · [GitHub 主页](https://github.com/huanweide)
+由 **huanweide** 维护 · [GitHub 主页](https://github.com/huanweide)
 
 ## CI 门禁用法
 
@@ -164,4 +166,4 @@ node --test          # 37 组：单测 + spawn 级冒烟（Node >= 18）
 - 离线 / 跨平台：Node 18+ 即可，不联网、不挑系统。
 - 一键跑：`node index.js --root ./src`（详见上方用法）。
 
-← [回到代码健康家族总览](https://github.com/huanweide/family-showcase)
+← [回到零依赖 CLI 系列总览](https://github.com/huanweide/family-showcase)
